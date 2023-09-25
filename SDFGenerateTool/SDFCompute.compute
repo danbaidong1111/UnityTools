@@ -1,0 +1,111 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSDownSampleGenerate
+#pragma kernel CSGenerage
+#pragma kernel CSSave
+#pragma kernel CSLerp
+
+float2 _RTSize;
+float2 _DownRTSize;
+float2 _MaxDistance;
+Texture2D<float4> _SourceTexture;
+RWTexture2D<float4> _Result;
+RWBuffer<float2> _DownSampleResultBuffer;
+RWBuffer<float2> _ResultBuffer;
+
+uint _LerpTexArraySize;
+Texture2DArray<float4> _LerpTexArray;
+
+//common SamplerState settings
+SamplerState PointClampSampler;
+SamplerState LinearClampSampler;
+
+
+[numthreads(8,8,1)]
+void CSDownSampleGenerate (uint3 id : SV_DispatchThreadID)
+{
+    float2 souceUV = float2(id.x / _DownRTSize.x, id.y / _DownRTSize.y);
+    _DownSampleResultBuffer[id.x + id.y * _DownRTSize.x] = _SourceTexture.SampleLevel(LinearClampSampler, souceUV, 0);
+}
+
+[numthreads(8,8,1)]
+void CSGenerage (uint3 id : SV_DispatchThreadID)
+{
+    float minDist2Foreground = 99999999;
+    float minDist2Background = 99999999;
+    for (uint dx = 0; dx < _RTSize.x; dx++)
+    {
+        for (uint dy = 0; dy < _RTSize.y; dy++)
+        {
+            float source = _SourceTexture[uint2(dx, dy)];
+
+            float2 uvSample = float2(dx, dy);
+            float2 uvCur = float2(id.x, id.y);
+            float2 posVec = float2(uvSample - uvCur);
+            float curDistSquare = dot(posVec, posVec);
+            if (source < 0.5)
+            {
+                minDist2Foreground = (curDistSquare < minDist2Foreground)? curDistSquare : minDist2Foreground;
+            }
+            else
+            {
+                minDist2Background = (curDistSquare < minDist2Background)? curDistSquare : minDist2Background;
+            }
+        }
+    }
+
+    _ResultBuffer[id.x + id.y * _RTSize.x] = float2(sqrt(minDist2Foreground), sqrt(minDist2Background));
+}
+
+[numthreads(8,8,1)]
+void CSSave (uint3 id : SV_DispatchThreadID)
+{
+    float2 foreBackBuffer = _ResultBuffer[id.x + id.y * _RTSize.x];
+    foreBackBuffer.x /= _MaxDistance.x;
+    foreBackBuffer.y /= _MaxDistance.y;
+
+    _Result[id.xy] = (foreBackBuffer.x - foreBackBuffer.y) * 0.5 + 0.5;
+
+}
+
+
+[numthreads(8,8,1)]
+void CSLerp (uint3 id : SV_DispatchThreadID)
+{
+    uint arraySize = _LerpTexArraySize;
+    float3 arrayUV = id.xyz;
+    arrayUV.z = 0;
+    
+    float resultColor = 0;
+
+    
+    uint levelStep = 256.0 / (arraySize - 1);
+
+    float lerpStep = 0;
+
+    float3 curTexIndex = arrayUV;
+    float3 nextTexIndex = arrayUV;
+    nextTexIndex.z++;
+
+ 
+    for (int i = 0; i < 255; i++) 
+    {
+        float weight = lerpStep / levelStep;
+
+
+        resultColor += lerp(_LerpTexArray[curTexIndex], _LerpTexArray[nextTexIndex], weight) < 0.5 ? 0 : 1;
+
+        lerpStep++;
+        if(lerpStep >= levelStep)
+        {
+            lerpStep = 0;
+            curTexIndex = nextTexIndex;
+            nextTexIndex.z++;
+        }
+    }
+    resultColor /= 255.0;
+
+
+
+    _Result[id.xy] = resultColor;
+
+}
