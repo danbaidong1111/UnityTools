@@ -1,9 +1,5 @@
 using UnityEngine;
-
-
-using System.Collections.Generic;
 using System.IO;
-using Unity.Mathematics;
 
 
 #if UNITY_EDITOR

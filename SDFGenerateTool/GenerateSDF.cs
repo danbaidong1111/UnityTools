@@ -1,15 +1,8 @@
 using UnityEngine;
-
-
-using System.Collections.Generic;
 using System.IO;
 using Unity.Mathematics;
-using static UnityEngine.UI.Image;
 using System;
-using UnityEditorInternal;
 using System.Diagnostics;
-using System.Collections;
-using Unity.EditorCoroutines.Editor;
 
 
 #if UNITY_EDITOR
